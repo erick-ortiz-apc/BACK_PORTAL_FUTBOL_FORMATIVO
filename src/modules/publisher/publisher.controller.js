@@ -80,7 +80,7 @@ async function updateVenue(req, res) {
   try {
     const org = await publisherService.getOrganization(req.user.id);
     if (!org) return res.status(400).json({ message: 'Organización no encontrada' });
-    const venue = await publisherService.updateVenue(org.id, req.params.id, req.body);
+    const venue = await publisherService.updateVenue(req.user.id, org.id, req.params.id, req.body);
     res.json(venue);
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });

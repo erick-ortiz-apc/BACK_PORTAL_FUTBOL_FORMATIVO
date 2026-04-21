@@ -122,7 +122,7 @@ async function createVenue(orgId, data) {
   return getVenueById(result.insertId);
 }
 
-async function updateVenue(orgId, venueId, data) {
+async function updateVenue(publisherId, orgId, venueId, data) {
   const [rows] = await pool.query(
     'SELECT id FROM venues WHERE id = ? AND organization_id = ?',
     [venueId, orgId]
@@ -132,12 +132,42 @@ async function updateVenue(orgId, venueId, data) {
     err.status = 404;
     throw err;
   }
+
+  const [pubRows] = await pool.query(
+    `SELECT p.id, ps.code AS previous_status_code
+     FROM publications p
+     JOIN publication_statuses ps ON p.status_id = ps.id
+     WHERE p.publisher_id = ? AND p.venue_id = ?
+     LIMIT 1`,
+    [publisherId, venueId]
+  );
+  const linkedPub = pubRows[0] || null;
+
   const { region_id, commune_id, name, address_line, latitude, longitude } = data;
   await pool.query(
     `UPDATE venues SET region_id = ?, commune_id = ?, name = ?, address_line = ?, latitude = ?, longitude = ?
      WHERE id = ?`,
     [region_id, commune_id, name, address_line || null, latitude || null, longitude || null, venueId]
   );
+
+  if (linkedPub && linkedPub.previous_status_code !== 'en_revision') {
+    const [[statusRow]] = await pool.query(
+      "SELECT id FROM publication_statuses WHERE code = 'en_revision'"
+    );
+    await pool.query(
+      `UPDATE publications
+         SET status_id = ?, reviewed_at = NULL, reviewed_by_admin_id = NULL, review_notes = NULL
+       WHERE id = ?`,
+      [statusRow.id, linkedPub.id]
+    );
+    const pub = await getMiPublicacion(publisherId);
+    const publisher = await _getPublisherSummary(publisherId);
+    if (publisher && pub) {
+      notifications.notifyPublicationEdited({ publisher, publication: pub })
+        .catch(err => console.error('[notify] venue edited:', err.message));
+    }
+  }
+
   return getVenueById(venueId);
 }
 

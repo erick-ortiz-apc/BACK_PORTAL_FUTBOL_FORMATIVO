@@ -16,9 +16,16 @@ async function getDashboard() {
   const [[{ publishers_total }]] = await pool.query(
     'SELECT COUNT(*) AS publishers_total FROM publishers'
   );
-  const [[{ organizations_total }]] = await pool.query(
-    'SELECT COUNT(*) AS organizations_total FROM organizations'
+
+  const [orgByType] = await pool.query(
+    `SELECT ot.code, COUNT(*) AS total
+     FROM organizations o
+     JOIN organization_types ot ON o.organization_type_id = ot.id
+     GROUP BY ot.code`
   );
+  const orgCounts = { escuela: 0, academia: 0, club: 0 };
+  for (const row of orgByType) orgCounts[row.code] = Number(row.total);
+  const organizations_total = orgCounts.escuela + orgCounts.academia + orgCounts.club;
 
   const [topRegions] = await pool.query(
     `SELECT r.name AS region, COUNT(DISTINCT p.id) AS total
@@ -47,7 +54,12 @@ async function getDashboard() {
   return {
     by_status: byStatus,
     publishers_total: Number(publishers_total),
-    organizations_total: Number(organizations_total),
+    organizations_total,
+    organizations_by_type: {
+      escuelas: orgCounts.escuela,
+      academias: orgCounts.academia,
+      clubes: orgCounts.club,
+    },
     top_regions: topRegions.map(r => ({ region: r.region, total: Number(r.total) })),
     activity_7d: {
       new: Number(new7d),
